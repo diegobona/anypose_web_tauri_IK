@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Anypose 3D Client</title>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.158.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.158.0/examples/jsm/"
+        }
+      }
+    </script>
+    <script type="module" src="/JointController.js" defer></script>
+    <script type="module" src="/main.js" defer></script>
+  </head>
+
+  <body>
+    <div class="ui-container">
+      <div class="control-panel">
+        <h2>Anypose 3D模型</h2>
+        <div class="model-selector">
+          <label for="model-select">选择人物模型：</label>
+          <select id="model-select">
+            <option value="">请选择模型...</option>
+          </select>
+          <button id="load-model-btn" disabled>加载模型</button>
+        </div>
+        <div class="model-info">
+          <p id="model-status">未加载模型</p>
+        </div>
+      </div>
+    </div>
+    
+    <div id="three-container"></div>
+    
+    <div class="loading-overlay" id="loading-overlay">
+      <div class="loading-spinner"></div>
+      <p>正在加载模型...</p>
+    </div>
+  </body>
+</html>
