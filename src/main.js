@@ -9,10 +9,11 @@ class AnyposeApp {
     this.camera = null;
     this.renderer = null;
     this.controls = null;
-    this.currentModel = null;
+    this.loadedModels = []; // 改为数组存储多个模型
     this.fbxLoader = new FBXLoader();
     // 初始化关节控制器
     this.jointController = null;
+    this.modelSpacing = 1; // 模型之间的间距
     
     this.init();
     this.setupUI();
@@ -110,37 +111,34 @@ class AnyposeApp {
 
   setupUI() {
     const modelSelect = $('#model-select');
-    const loadBtn = $('#load-model-btn');
     const modelStatus = $('#model-status');
 
-    modelSelect.on('change', function() {
-      const selectedValue = $(this).val();
-      loadBtn.prop('disabled', !selectedValue);
-    });
-
-    loadBtn.on('click', () => {
-      const selectedModel = modelSelect.val();
-      if (selectedModel) {
-        this.loadModel(selectedModel);
+    modelSelect.on('change', () => {
+      const selectedValue = modelSelect.val();
+      if (selectedValue) {
+        this.loadModel(selectedValue);
+        // 加载完成后重置选择框，允许重复选择
+        setTimeout(() => {
+          modelSelect.val('');
+        }, 100);
       }
     });
   }
 
   async loadModelList() {
     try {
-      // 这里模拟从models目录获取FBX文件列表
-      // 在实际应用中，你需要通过Tauri的文件系统API来获取
-      const modelList = [
-        'female_base.fbx',
-        'character2.fbx',
-        'character3.fbx'
+      // 定义模型选项和对应的文件映射
+      const modelOptions = [
+        { label: '女性', value: 'female', file: 'female_base.fbx' },
+        { label: '男性', value: 'male', file: 'male_base.fbx' }
+        // 可以在这里添加更多模型选项
       ];
 
       const modelSelect = $('#model-select');
       modelSelect.empty().append('<option value="">请选择模型...</option>');
       
-      modelList.forEach(model => {
-        modelSelect.append(`<option value="${model}">${model}</option>`);
+      modelOptions.forEach(option => {
+        modelSelect.append(`<option value="${option.value}">${option.label}</option>`);
       });
     } catch (error) {
       console.error('加载模型列表失败:', error);
@@ -148,33 +146,48 @@ class AnyposeApp {
     }
   }
 
-  loadModel(modelPath) {
+  loadModel(modelType) {
+    // 建立模型类型到文件的映射
+    const modelFileMap = {
+      'female': 'female_base.fbx',
+      'male': 'male_base.fbx',
+      // 可以在这里添加更多模型映射
+    };
+
+    const modelFile = modelFileMap[modelType];
+    if (!modelFile) {
+      console.error('未找到对应的模型文件:', modelType);
+      $('#model-status').text('模型文件不存在');
+      return;
+    }
+
     const loadingOverlay = $('#loading-overlay');
     const modelStatus = $('#model-status');
     
     loadingOverlay.addClass('show');
     modelStatus.text('正在加载模型...');
 
-    // 移除当前模型
-    if (this.currentModel) {
-      this.scene.remove(this.currentModel);
-      this.jointController.clearJointControllers();
-    }
+    // 计算新模型的位置
+    const newModelPosition = this.calculateNextModelPosition();
 
     // 加载新模型
     this.fbxLoader.load(
-      `./models/${modelPath}`,
+      `./models/${modelFile}`,
       (object) => {
         // 设置模型属性
         object.scale.setScalar(0.005);
         
-        // 将模型放置在舞台中心，并调整到地面上
+        // 计算模型边界框
         const box = new THREE.Box3().setFromObject(object);
         const size = box.getSize(new THREE.Vector3());
         const minY = box.min.y;
         
-        // 设置位置：X和Z轴在中心(0,0)，Y轴让模型底部贴地
-        object.position.set(0, -minY * object.scale.y, 0);
+        // 设置模型位置：让模型底部贴地，并排列在旁边
+        object.position.set(
+          newModelPosition.x, 
+          -minY * object.scale.y, 
+          newModelPosition.z
+        );
         
         // 启用阴影
         object.traverse((child) => {
@@ -184,16 +197,25 @@ class AnyposeApp {
           }
         });
 
-        this.currentModel = object;
-        this.scene.add(object);
+        // 为模型添加标识信息
+        object.userData = {
+          modelType: modelType,
+          modelFile: modelFile,
+          loadTime: Date.now()
+        };
 
-        // 添加关节控制器
+        // 添加到场景和模型数组
+        this.scene.add(object);
+        this.loadedModels.push(object);
+
+        // 为新模型添加关节控制器
         this.jointController.addJointControllers(object);
-        console.log('模型加载完成，关节控制器已添加');
+        
+        console.log(`模型加载完成，当前场景中有 ${this.loadedModels.length} 个模型`);
         
         loadingOverlay.removeClass('show');
-        modelStatus.text(`已加载: ${modelPath}`);
-        
+        const displayName = modelType === 'female' ? '女性模型' : '男性模型';
+        modelStatus.text(`已加载: ${displayName} (共${this.loadedModels.length}个模型)`);
       },
       (progress) => {
         const percent = Math.round((progress.loaded / progress.total) * 100);
@@ -205,8 +227,55 @@ class AnyposeApp {
         modelStatus.text('模型加载失败');
       }
     );
-}
+  }
 
+  // 计算下一个模型的位置
+  calculateNextModelPosition() {
+    const modelCount = this.loadedModels.length;
+    
+    // 计算排列位置：一行排列，超过5个换行
+    const modelsPerRow = 5;
+    const row = Math.floor(modelCount / modelsPerRow);
+    const col = modelCount % modelsPerRow;
+    
+    // 计算位置，让模型居中排列
+    const startX = -(modelsPerRow - 1) * this.modelSpacing / 2;
+    const x = startX + col * this.modelSpacing;
+    const z = row * this.modelSpacing;
+    
+    return { x, z };
+  }
+
+  // 添加清除所有模型的方法
+  clearAllModels() {
+      // 清除所有模型的关节控制器
+      this.loadedModels.forEach(model => {
+          this.jointController.clearModelJointControllers(model);
+      });
+      
+      // 从场景中移除所有模型
+      this.loadedModels.forEach(model => {
+          this.scene.remove(model);
+      });
+      
+      // 清空模型数组
+      this.loadedModels = [];
+      
+      // 更新状态显示
+      $('#model-status').text('场景已清空');
+      console.log('已清除所有模型');
+  }
+
+  // 获取模型信息
+  getModelInfo() {
+    return this.loadedModels.map((model, index) => ({
+      index: index,
+      type: model.userData.modelType,
+      file: model.userData.modelFile,
+      position: model.position,
+      loadTime: new Date(model.userData.loadTime).toLocaleTimeString()
+    }));
+  }
 
   animate() {
     requestAnimationFrame(() => this.animate());

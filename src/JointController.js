@@ -3,56 +3,31 @@ import * as THREE from 'three';
 class JointController {
     constructor(scene) {
         this.scene = scene;
-        this.jointControllers = [];
+        // 改为按模型分组存储关节控制器
+        this.modelJointControllers = new Map(); // key: model, value: controllers array
+        
+        // 主要关节名称列表 - 更新为实际的骨骼名称格式（无冒号）
         this.mainJointNames = [
-            // 根关节
             'mixamorigHips',
-            
-            // 脊椎链
             'mixamorigSpine',
-            'mixamorigSpine1',
+            'mixamorigSpine1', 
             'mixamorigSpine2',
             'mixamorigNeck',
             'mixamorigHead',
-            
-            // 左臂链
             'mixamorigLeftShoulder',
             'mixamorigLeftArm',
             'mixamorigLeftForeArm',
             'mixamorigLeftHand',
-            
-            // 右臂链
             'mixamorigRightShoulder',
             'mixamorigRightArm',
             'mixamorigRightForeArm',
             'mixamorigRightHand',
-            
-            // 左腿链
             'mixamorigLeftUpLeg',
             'mixamorigLeftLeg',
             'mixamorigLeftFoot',
-            'mixamorigLeftToeBase',
-            
-            // 右腿链
             'mixamorigRightUpLeg',
             'mixamorigRightLeg',
-            'mixamorigRightFoot',
-            'mixamorigRightToeBase',
-            
-            // 主要手指关节（拇指、食指、中指）
-            // 'mixamorigLeftHandThumb1',
-            // 'mixamorigLeftHandThumb2',
-            // 'mixamorigLeftHandIndex1',
-            // 'mixamorigLeftHandIndex2',
-            // 'mixamorigLeftHandMiddle1',
-            // 'mixamorigLeftHandMiddle2',
-            
-            // 'mixamorigRightHandThumb1',
-            // 'mixamorigRightHandThumb2',
-            // 'mixamorigRightHandIndex1',
-            // 'mixamorigRightHandIndex2',
-            // 'mixamorigRightHandMiddle1',
-            // 'mixamorigRightHandMiddle2'
+            'mixamorigRightFoot'
         ];
     }
 
@@ -79,8 +54,8 @@ class JointController {
     }
 
     addJointControllers(model) {
-        // 清除之前的控制器
-        this.clearJointControllers();
+        // 不再清除所有控制器，只为当前模型添加
+        const modelControllers = [];
         
         // 调试：打印所有骨骼名称
         console.log('=== 模型中的所有骨骼 ===');
@@ -95,43 +70,103 @@ class JointController {
         model.traverse((child) => {
             if (child.isBone && this.mainJointNames.includes(child.name)) {
                 const controller = this.createJointController(child);
-                this.jointControllers.push(controller);
+                modelControllers.push(controller);
             }
         });
         
-        console.log(`已添加 ${this.jointControllers.length} 个关节控制器`);
+        // 将控制器与模型关联
+        this.modelJointControllers.set(model, modelControllers);
+        
+        console.log(`已为模型添加 ${modelControllers.length} 个关节控制器`);
     }
 
-    clearJointControllers() {
-        this.jointControllers.forEach(controller => {
-            // 从骨骼中移除控制器
-            controller.bone.remove(controller.controller);
-            // 清理材质和几何体
-            controller.controller.geometry.dispose();
-            controller.controller.material.dispose();
+    // 清除特定模型的关节控制器
+    clearModelJointControllers(model) {
+        const controllers = this.modelJointControllers.get(model);
+        if (controllers) {
+            controllers.forEach(controller => {
+                // 从骨骼中移除控制器
+                controller.bone.remove(controller.controller);
+                // 清理材质和几何体
+                controller.controller.geometry.dispose();
+                controller.controller.material.dispose();
+            });
+            this.modelJointControllers.delete(model);
+        }
+    }
+
+    // 清除所有关节控制器
+    clearAllJointControllers() {
+        this.modelJointControllers.forEach((controllers, model) => {
+            this.clearModelJointControllers(model);
         });
-        this.jointControllers = [];
+        this.modelJointControllers.clear();
     }
 
-    // 显示/隐藏控制器
+    // 显示/隐藏特定模型的控制器
+    setModelVisible(model, visible) {
+        const controllers = this.modelJointControllers.get(model);
+        if (controllers) {
+            controllers.forEach(controller => {
+                controller.controller.visible = visible;
+            });
+        }
+    }
+
+    // 显示/隐藏所有控制器
     setVisible(visible) {
-        this.jointControllers.forEach(controller => {
-            controller.controller.visible = visible;
+        this.modelJointControllers.forEach((controllers) => {
+            controllers.forEach(controller => {
+                controller.controller.visible = visible;
+            });
         });
     }
 
-    // 设置控制器颜色
+    // 设置特定模型控制器颜色
+    setModelColor(model, color) {
+        const controllers = this.modelJointControllers.get(model);
+        if (controllers) {
+            controllers.forEach(controller => {
+                controller.controller.material.color.setHex(color);
+            });
+        }
+    }
+
+    // 设置所有控制器颜色
     setColor(color) {
-        this.jointControllers.forEach(controller => {
-            controller.controller.material.color.setHex(color);
+        this.modelJointControllers.forEach((controllers) => {
+            controllers.forEach(controller => {
+                controller.controller.material.color.setHex(color);
+            });
         });
     }
 
-    // 设置控制器大小
+    // 设置特定模型控制器大小
+    setModelSize(model, size) {
+        const controllers = this.modelJointControllers.get(model);
+        if (controllers) {
+            controllers.forEach(controller => {
+                controller.controller.scale.setScalar(size);
+            });
+        }
+    }
+
+    // 设置所有控制器大小
     setSize(size) {
-        this.jointControllers.forEach(controller => {
-            controller.controller.scale.setScalar(size);
+        this.modelJointControllers.forEach((controllers) => {
+            controllers.forEach(controller => {
+                controller.controller.scale.setScalar(size);
+            });
         });
+    }
+
+    // 获取所有控制器总数
+    getTotalControllerCount() {
+        let total = 0;
+        this.modelJointControllers.forEach((controllers) => {
+            total += controllers.length;
+        });
+        return total;
     }
 }
 
